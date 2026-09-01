@@ -1,5 +1,5 @@
 from aion.adapters.observation import RSSAdapter
-from aion.core.decision import _DecisionOutput, _to_decision, render_context
+from aion.core.decision import DecisionOutput, _to_decision, render_context
 from tests.fakes import make_observation
 
 FEED = """<?xml version="1.0"?>
@@ -40,7 +40,7 @@ def test_rss_ids_are_stable_across_polls(tmp_path):
 
 
 def test_create_work_without_objective_falls_back_to_no_action():
-    parsed = _DecisionOutput(action="create_work", reason="vague", objective=None)
+    parsed = DecisionOutput(action="create_work", reason="vague", objective=None)
     assert _to_decision(parsed).action == "no_action"
 
 

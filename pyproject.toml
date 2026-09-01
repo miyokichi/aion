@@ -9,15 +9,28 @@ description = "A thin control plane: observe the world, decide, delegate, reconc
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic>=0.40",       # LLM Decision (Structured Outputs)
-    "claude-agent-sdk>=0.1",  # Agent Runtime (自作しない)
-    "feedparser>=6.0",        # Observation source
-    "pydantic>=2.0",          # Decision schema
-    "python-dotenv>=1.0",     # .env
+    "feedparser>=6.0",     # Observation source
+    "pydantic>=2.0",       # Decision schema
+    "python-dotenv>=1.0",  # .env
 ]
 
+# 使うプロバイダの部品だけ入れる。ローカルLLMだけで回すならanthropicは要らない。
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+anthropic = [
+    "anthropic>=1.0",         # LLM Decision (Structured Outputs)
+    "claude-agent-sdk>=0.1",  # Agent Runtime (自作しない)
+]
+local = [
+    "openai>=1.0",       # OpenAI互換エンドポイント (Ollama / llama.cpp / vLLM / LM Studio)
+    "smolagents>=1.20",  # OpenAI互換を話すAgent Runtime
+]
+dev = [
+    "pytest>=8.0",
+    "anthropic>=1.0",
+    "claude-agent-sdk>=0.1",
+    "openai>=1.0",
+    "smolagents>=1.20",
+]
 
 [project.scripts]
 aion = "aion.app:main"

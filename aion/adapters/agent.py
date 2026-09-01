@@ -77,3 +77,52 @@ class ClaudeAgentAdapter:
                     if isinstance(block, TextBlock) and block.text.strip():
                         chunks.append(block.text.strip())
         return "\n\n".join(chunks)
+
+
+class SmolagentsAdapter:
+    """smolagents への薄いアダプタ（OpenAI互換 = ローカルLLM向け）。
+
+    Agentループ・ツール呼び出し・プロンプトはすべて smolagents 側が持つ。
+    ここにあるのは「WorkをtaskにしてResultを取り出す」だけ。
+
+    Claude Agent SDK はAnthropicのエンドポイントしか話さないので、
+    ローカルLLMで動かす経路としてこちらを使う。
+    """
+
+    def __init__(
+        self,
+        model: str,
+        base_url: str,
+        api_key: str = "local",
+        max_steps: int = 8,
+    ) -> None:
+        self.model = model
+        self.base_url = base_url
+        self.api_key = api_key
+        self.max_steps = max_steps
+
+    def execute(self, work: Work) -> Result:
+        try:
+            output = self._run(work)
+        except Exception as exc:
+            return Result(work_id=work.id, success=False, output=f"{type(exc).__name__}: {exc}")
+        if not output.strip():
+            return Result(work_id=work.id, success=False, output="agent returned no output")
+        return Result(work_id=work.id, success=True, output=output)
+
+    def _run(self, work: Work) -> str:
+        from smolagents import (  # 遅延import
+            OpenAIServerModel,
+            ToolCallingAgent,
+            VisitWebpageTool,
+            WebSearchTool,
+        )
+
+        agent = ToolCallingAgent(
+            tools=[WebSearchTool(), VisitWebpageTool()],
+            model=OpenAIServerModel(
+                model_id=self.model, api_base=self.base_url, api_key=self.api_key
+            ),
+        )
+        task = f"{_SYSTEM_PROMPT}\n\n# Objective\n{work.objective}\n\n# Context\n{work.context}"
+        return str(agent.run(task, max_steps=self.max_steps))

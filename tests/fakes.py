@@ -75,3 +75,52 @@ def make_observation(obs_id: str = "obs-1", content: str = "Major geopolitical e
         content=content,
         metadata={"title": "Major geopolitical event"},
     )
+
+
+class HttpError(Exception):
+    """OpenAI互換サーバが返すHTTPエラーの代役。"""
+
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class _Message:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+class _Choice:
+    def __init__(self, content: str) -> None:
+        self.message = _Message(content)
+
+
+class _Completion:
+    def __init__(self, content: str) -> None:
+        self.choices = [_Choice(content)]
+
+
+class _Completions:
+    def __init__(self, outer: "FakeOpenAIClient") -> None:
+        self._outer = outer
+
+    def create(self, **kwargs):
+        self._outer.calls.append(kwargs)
+        item = self._outer._script.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return _Completion(item)
+
+
+class _Chat:
+    def __init__(self, outer: "FakeOpenAIClient") -> None:
+        self.completions = _Completions(outer)
+
+
+class FakeOpenAIClient:
+    """`openai.OpenAI` の最小の代役。台本どおりに返すか、例外を投げる。"""
+
+    def __init__(self, script: list) -> None:
+        self._script = list(script)
+        self.calls: list[dict] = []
+        self.chat = _Chat(self)

@@ -17,10 +17,12 @@
 | **USE NOW** | RSS/Atom (feedparser) | 外界の一次ソース。最も単純で依存が軽い。RSSHub等の出力もそのまま食える |
 | **USE NOW** | SQLite (stdlib) | World State永続化。追加依存ゼロ |
 | **USE NOW** | Anthropic API (`anthropic`) + Structured Outputs | LLM Decision。判断スキーマの検証を自作しない |
-| **USE NOW** | Claude Agent SDK (`claude-agent-sdk`) | 既存Agent Runtime。ループ・ツール・権限・セッションを自作しない |
+| **USE NOW** | Claude Agent SDK (`claude-agent-sdk`) | 既存Agent Runtime（Anthropic経路）。ループ・ツール・権限・セッションを自作しない |
+| **USE NOW** | openai (Python SDK) | OpenAI互換エンドポイント（ローカルLLM）でのDecision |
+| **USE NOW** | smolagents | 既存Agent Runtime（OpenAI互換経路）。ローカルLLMで実作業を回す |
 | **USE LATER** | RSSHub | 非RSSソース（SNS等）が必要になったら、URLを差し替えるだけで載る |
 | **USE LATER** | changedetection.io | 「RSSを持たないWebページ」の変化検知が必要になった時点で |
-| **USE LATER** | OpenHands | コード実行・リポジトリ操作を伴うWorkが必要になった時点で |
+| **USE LATER** | OpenHands | コード実行・リポジトリ操作を伴うWorkが必要になった時点で（Python>=3.12が要る） |
 | **USE LATER** | MCP | 外部ツールを増やす時。Agent SDK側の設定として入る（AION本体は無改造） |
 | **NOT NEEDED** | World Monitor | 「World Monitor」という確立したOSSは存在しない（後述） |
 | **NOT NEEDED** | Huginn | Ruby/Rails + DB。RSSAdapterで足りる範囲に対して統合コストが重すぎる |
@@ -132,13 +134,21 @@ License: MIT。
 
 License: MIT。
 
+**実測（openhands-sdk 1.44.1 を実際にインストールして確認）**:
+
+- `LLM(model=..., base_url=..., api_key=...)` を持ち、内部はLiteLLM。
+  つまり **OpenAI互換エンドポイント（ローカルLLM）に対応している**
+- `Agent(llm=..., tools=[...])` + `Conversation(agent, workspace=...)` + `run()`
+- **`Python>=3.12` を要求する**（AIONは `>=3.11`）
+- 既定ツールは terminal / file editor 系。ツールは別パッケージ `openhands-tools`
+- 依存が重い（litellm / fastapi / uvicorn / websockets 等）
+
 MVPの最初のE2E（指示書 §14 のデモ例）は **調査タスク** であり、
 コード実行やリポジトリ操作を必要としない。OpenHandsの主戦場は
-「コーディングエージェント」であり、そこにDockerランタイムを持ち込む
-必然性が今はない。
+「コーディングエージェント」であり、そこにDockerランタイムと
+Pythonの下限引き上げを持ち込む必然性が今はない。
 
-Workが「コードを書く/リポジトリを直す」に広がった時点で
-`OpenHandsAdapter`（`openhands-agent-server` へのHTTPクライアント）を足す。
+Workが「コードを書く/リポジトリを直す」に広がった時点で採用する。
 `AgentExecutor` プロトコルはそのために存在する。
 
 ---
@@ -217,6 +227,43 @@ AIONが単一プロセスである限り、関数呼び出しがEvent Busであ�
 
 ---
 
+### smolagents
+
+| 項目 | 内容 |
+|---|---|
+| Role | Agent Runtime（OpenAI互換 = ローカルLLM経路） |
+| Interface | Python: `OpenAIServerModel(model_id, api_base, api_key)` + `ToolCallingAgent(tools, model).run(task)` |
+| Deployment | `pip install smolagents`。常駐プロセスもDockerも不要 |
+| Complexity | **小** |
+| MVP必要性 | **必要（ローカルLLM対応のため USE NOW）** |
+| Replacement | Agentループ、ツール呼び出し、Agentプロンプト、Web検索・ページ取得ツール |
+
+License: Apache-2.0。
+
+**なぜOpenHandsではなくこれか**（ローカルLLM経路の話。Anthropic経路は
+Claude Agent SDKのまま）:
+
+Claude Agent SDK は Anthropic のエンドポイントしか話さないので、
+ローカルLLMで実作業を回すには別のAgent Runtimeが要る。候補は2つあった。
+
+| | OpenHands | smolagents |
+|---|---|---|
+| OpenAI互換 | ○（LiteLLM経由） | ○（ネイティブ） |
+| Python要件 | **>=3.12**（AIONは>=3.11） | >=3.10 |
+| 依存の重さ | 重い（litellm/fastapi/uvicorn…） | 軽い |
+| 既定ツール | terminal / file editor（コーディング向け、別パッケージ） | `WebSearchTool` / `VisitWebpageTool`（調査向け、同梱） |
+| AION側のコード | 同程度 | 同程度 |
+
+指示書 §4 はAgent Runtimeの第一候補としてOpenHandsを挙げつつ、
+「必要に応じて MCP対応Agent / **その他既存Agent Runtime**」も認めている。
+AIONの現在のWorkは調査タスクであり、smolagentsの同梱ツールがそのまま合う。
+指示書 §2 の判断基準（複雑さ < 単純さ）に従ってsmolagentsを採る。
+
+どちらにせよAION側は `AgentExecutor` を1つ実装するだけであり、
+後で入れ替えても他のコードは変わらない。
+
+---
+
 ## MVP構成の決定
 
 指示書 §6 の推奨初期構成:
@@ -228,14 +275,16 @@ External Source + LLM + Agent + SQLite + AION Core
 に対する具体化:
 
 ```
-RSS/Atom (feedparser)          ← External Source
-Anthropic Messages API          ← LLM (Structured Outputs)
-Claude Agent SDK                ← Agent
-SQLite (stdlib)                 ← World State
-AION Core                       ← Control Loop（ここだけが自作）
+RSS/Atom (feedparser)                          ← External Source
+Anthropic Messages API  |  OpenAI互換 API      ← LLM Decision
+Claude Agent SDK        |  smolagents          ← Agent
+SQLite (stdlib)                                ← World State
+AION Core                                      ← Control Loop（ここだけが自作）
 ```
 
-常駐サービス: **ゼロ**。Docker: **不要**。
+左列がクラウド、右列がローカルLLM。`AION_LLM_PROVIDER` 一つで切り替わる。
+
+常駐サービス: **ゼロ**（ローカルLLMサーバ自体を除く）。Docker: **不要**。
 
 AIONが自作したものは Control Loop だけであり、
 Web crawler / Agent Runtime / Workflow Engine / Event Bus / Knowledge Graph /
