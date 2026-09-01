@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aion"
+version = "0.1.0"
+description = "A thin control plane: observe the world, decide, delegate, reconcile."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40",       # LLM Decision (Structured Outputs)
+    "claude-agent-sdk>=0.1",  # Agent Runtime (自作しない)
+    "feedparser>=6.0",        # Observation source
+    "pydantic>=2.0",          # Decision schema
+    "python-dotenv>=1.0",     # .env
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+aion = "aion.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["aion"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
